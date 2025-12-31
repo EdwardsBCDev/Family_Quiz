@@ -7,8 +7,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ['system-ui', 'sans-serif'],
-        sans: ['system-ui', 'sans-serif'],
+        display: ['"Playfair Display"', 'serif'],
+        sans: ['Inter', 'sans-serif'],
       },
       animation: {
         'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
