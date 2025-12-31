@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #020617; /* Slate 950 */
+  color: white;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Glass effect for cards */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Custom glow effect */
+.shadow-glow {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+}
