@@ -2,7 +2,7 @@ import { Question, Category } from './types';
 
 export const questionsPool: Question[] = [
   // ==========================================
-  // DISNEY CATEGORY (40 Questions)
+  // DISNEY CATEGORY
   // ==========================================
   {
     id: 'd1',
@@ -125,9 +125,9 @@ export const questionsPool: Question[] = [
     id: 'd14',
     category: Category.DISNEY,
     text: "What animal does Jafar turn into in 'Aladdin'?",
-    options: ["A tiger", "A dragon", "A lion", "A bear"],
+    options: ["A giant cobra", "A dragon", "A lion", "A bear"],
     correctIndex: 0,
-    explanation: "Wait, actually he turns into a giant COBRA first, but in the final battle he becomes a genie. The question usually refers to the cobra/snake form before the genie.",
+    explanation: "He turns into a giant cobra to fight Aladdin.",
     isBonus: false
   },
   {
@@ -274,54 +274,9 @@ export const questionsPool: Question[] = [
     explanation: "Shere Khan is the fearsome tiger.",
     isBonus: false
   },
-    {
-    id: 'd31',
-    category: Category.DISNEY,
-    text: "Which Disney movie is set in Scotland?",
-    options: ["Brave", "Frozen", "Tangled", "Moana"],
-    correctIndex: 0,
-    explanation: "Brave features Merida and is set in the Scottish Highlands.",
-    isBonus: false
-  },
-    {
-    id: 'd32',
-    category: Category.DISNEY,
-    text: "What is the name of the daycare in 'Toy Story 3'?",
-    options: ["Sunnyside", "Happy Days", "Playtime", "Kinder Joy"],
-    correctIndex: 0,
-    explanation: "Sunnyside Daycare is where Lotso rules.",
-    isBonus: false
-  },
-    {
-    id: 'd33',
-    category: Category.DISNEY,
-    text: "Who is the main character in 'Coco'?",
-    options: ["Miguel", "Hector", "Dante", "Ernesto"],
-    correctIndex: 0,
-    explanation: "Miguel Rivera travels to the Land of the Dead.",
-    isBonus: false
-  },
-    {
-    id: 'd34',
-    category: Category.DISNEY,
-    text: "What is the name of the crab in 'Moana'?",
-    options: ["Sebastian", "Tamatoa", "Hermie", "Claws"],
-    correctIndex: 1,
-    explanation: "Tamatoa is the shiny crab.",
-    isBonus: true
-  },
-    {
-    id: 'd35',
-    category: Category.DISNEY,
-    text: "In 'Zootopia', what kind of animal is Judy Hopps?",
-    options: ["Fox", "Bunny", "Sloth", "Lion"],
-    correctIndex: 1,
-    explanation: "She is the first rabbit officer.",
-    isBonus: false
-  },
 
   // ==========================================
-  // MUSIC CATEGORY (40 Questions)
+  // MUSIC CATEGORY
   // ==========================================
   {
     id: 'm1',
@@ -595,7 +550,7 @@ export const questionsPool: Question[] = [
   },
 
   // ==========================================
-  // GENERAL KNOWLEDGE CATEGORY (40 Questions)
+  // GENERAL KNOWLEDGE CATEGORY
   // ==========================================
   {
     id: 'g1',
@@ -783,4 +738,88 @@ export const questionsPool: Question[] = [
     text: "What is the main ingredient in guacamole?",
     options: ["Tomato", "Avocado", "Onion", "Pepper"],
     correctIndex: 1,
-    explanation: "
+    explanation: "Avocado is the base of guacamole.",
+    isBonus: false
+  },
+  {
+    id: 'g22',
+    category: Category.GENERAL,
+    text: "How many players are on a soccer team on the field?",
+    options: ["10", "11", "12", "9"],
+    correctIndex: 1,
+    explanation: "There are 11 players including the goalkeeper.",
+    isBonus: false
+  },
+  {
+    id: 'g23',
+    category: Category.GENERAL,
+    text: "What is the chemical symbol for Gold?",
+    options: ["Au", "Ag", "Fe", "Go"],
+    correctIndex: 0,
+    explanation: "Au comes from the Latin word 'Aurum'.",
+    isBonus: true
+  },
+  {
+    id: 'g24',
+    category: Category.GENERAL,
+    text: "Who was the first person to walk on the moon?",
+    options: ["Buzz Aldrin", "Yuri Gagarin", "Neil Armstrong", "Michael Collins"],
+    correctIndex: 2,
+    explanation: "Neil Armstrong, in 1969.",
+    isBonus: false
+  },
+  {
+    id: 'g25',
+    category: Category.GENERAL,
+    text: "What is the smallest country in the world?",
+    options: ["Monaco", "Vatican City", "San Marino", "Liechtenstein"],
+    correctIndex: 1,
+    explanation: "Vatican City is the smallest independent state.",
+    isBonus: false
+  },
+  {
+    id: 'g26',
+    category: Category.GENERAL,
+    text: "What year did World War II end?",
+    options: ["1943", "1944", "1945", "1946"],
+    correctIndex: 2,
+    explanation: "It ended in 1945.",
+    isBonus: false
+  },
+  {
+    id: 'g27',
+    category: Category.GENERAL,
+    text: "What colors are the five Olympic rings?",
+    options: ["Blue, Yellow, Black, Green, Red", "Red, White, Blue, Yellow, Green", "Blue, Red, Purple, Green, Yellow", "Black, White, Red, Blue, Green"],
+    correctIndex: 0,
+    explanation: "Blue, Yellow, Black, Green, and Red.",
+    isBonus: true
+  },
+  {
+    id: 'g28',
+    category: Category.GENERAL,
+    text: "What is the longest river in the world?",
+    options: ["Amazon", "Nile", "Yangtze", "Mississippi"],
+    correctIndex: 1,
+    explanation: "The Nile is generally considered the longest.",
+    isBonus: false
+  },
+  {
+    id: 'g29',
+    category: Category.GENERAL,
+    text: "Which animal is known as the 'Ship of the Desert'?",
+    options: ["Horse", "Camel", "Elephant", "Donkey"],
+    correctIndex: 1,
+    explanation: "Camels are well adapted to desert travel.",
+    isBonus: false
+  },
+  {
+    id: 'g30',
+    category: Category.GENERAL,
+    text: "What is the national animal of Scotland?",
+    options: ["Lion", "Eagle", "Unicorn", "Stag"],
+    correctIndex: 2,
+    explanation: "Yes, the Unicorn is Scotland's national animal.",
+    isBonus: true
+  }
+];
