@@ -1,7 +1,7 @@
 import { Question, Category } from './types';
 import { questionsPool } from './questionsData';
 
-// Fisher-Yates shuffle algorithm
+// Fisher-Yates shuffle algorithm (The best way to randomise arrays)
 function shuffle<T>(array: T[]): T[] {
   const newArr = [...array];
   for (let i = newArr.length - 1; i > 0; i--) {
@@ -11,21 +11,24 @@ function shuffle<T>(array: T[]): T[] {
   return newArr;
 }
 
-// State to track which questions have been used
+// State to track which questions have been used so we don't repeat them
+// This resets only when you run out of questions in a category
 let usedQuestionIds: Set<string> = new Set();
 
 export const getRandomQuestions = async (category: Category, count: number): Promise<Question[]> => {
-  // 1. Filter pool by category
+  // 1. Get all questions for the requested category
   const categoryQuestions = questionsPool.filter(q => q.category === category);
   
-  // 2. Filter out questions we've already used
+  // 2. Filter out questions we've already used this session
   let available = categoryQuestions.filter(q => !usedQuestionIds.has(q.id));
 
   // 3. If we don't have enough unused questions, reset the pool for this category
   if (available.length < count) {
-    console.log("Resetting question pool for category:", category);
-    // Find all questions for this category currently in the 'used' set and remove them
+    console.log(`Resetting question pool for category: ${category}`);
+    
+    // Remove IDs of this category from the used set
     categoryQuestions.forEach(q => usedQuestionIds.delete(q.id));
+    
     // Reset available to all questions in this category
     available = categoryQuestions;
   }
