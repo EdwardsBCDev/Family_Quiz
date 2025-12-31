@@ -1,23 +1,41 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Player, Category, GameState, Question, PeerMessage } from './types';
-import { getRandomQuestions } from './quizService';
-import Lobby from './components/Lobby';
-import QuestionCard from './components/QuestionCard';
-import Leaderboard from './components/Leaderboard';
-import PlayerController from './components/PlayerController';
-import Fireworks from './components/Fireworks';
-import { Sparkles, Trophy, ChevronRight, Info, CheckCircle, XCircle, Share2 } from 'lucide-react';
+import { questionsPool } from './questionsData'; // Correct import
+import { Sparkles, Trophy, ChevronRight, Info, CheckCircle, XCircle, Share2, Timer, Users } from 'lucide-react';
+
+// --- HELPER TO SHUFFLE QUESTIONS ---
+const shuffle = <T>(array: T[]): T[] => {
+  const newArr = [...array];
+  for (let i = newArr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+  }
+  return newArr;
+};
+
+// --- SERVICE LOGIC ---
+let usedQuestionIds: Set<string> = new Set();
+const getRandomQuestions = async (category: Category, count: number): Promise<Question[]> => {
+  const categoryQuestions = questionsPool.filter(q => q.category === category);
+  let available = categoryQuestions.filter(q => !usedQuestionIds.has(q.id));
+  if (available.length < count) {
+    categoryQuestions.forEach(q => usedQuestionIds.delete(q.id));
+    available = categoryQuestions;
+  }
+  const selected = shuffle(available).slice(0, count);
+  selected.forEach(q => usedQuestionIds.add(q.id));
+  return selected;
+};
 
 const CATEGORIES = [Category.DISNEY, Category.MUSIC, Category.GENERAL];
+const ROUND_TIME = 60; // Seconds
 
 const App: React.FC = () => {
-  // Routing logic: If ?room=... then player mode
   const urlParams = new URLSearchParams(window.location.search);
   const roomFromUrl = urlParams.get('room');
   const [role] = useState<'HOST' | 'PLAYER'>(roomFromUrl ? 'PLAYER' : 'HOST');
 
-  // Common State
+  // State
   const [gameState, setGameState] = useState<GameState>('LOBBY');
   const [players, setPlayers] = useState<Player[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -27,26 +45,24 @@ const App: React.FC = () => {
   const [myScore, setMyScore] = useState(0);
   const [myName, setMyName] = useState('');
   const [connected, setConnected] = useState(false);
+  
+  // Timer State
+  const [timeLeft, setTimeLeft] = useState(ROUND_TIME);
 
-  // PeerJS refs
   const peerRef = useRef<any>(null);
   const connectionsRef = useRef<Map<string, any>>(new Map());
   const [hostPeerId, setHostPeerId] = useState<string>(roomFromUrl || '');
 
-  // Initialization
+  // --- INIT PEER ---
   useEffect(() => {
     const initPeer = () => {
       const PeerClass = (window as any).Peer;
       if (!PeerClass) {
-        console.warn('PeerJS not loaded yet, retrying...');
         setTimeout(initPeer, 500);
         return;
       }
-
       peerRef.current = new PeerClass();
-
       peerRef.current.on('open', (id: string) => {
-        console.log('Peer ID:', id);
         if (role === 'HOST') {
           setHostPeerId(id);
           setConnected(true);
@@ -54,27 +70,37 @@ const App: React.FC = () => {
           joinRoom(hostPeerId);
         }
       });
-
       if (role === 'HOST') {
         peerRef.current.on('connection', (conn: any) => {
           conn.on('data', (data: PeerMessage) => handleHostMessage(conn, data));
-          conn.on('open', () => {
-            connectionsRef.current.set(conn.peer, conn);
-          });
+          conn.on('open', () => connectionsRef.current.set(conn.peer, conn));
         });
       }
     };
-
     initPeer();
-
-    return () => {
-      peerRef.current?.destroy();
-    };
+    return () => peerRef.current?.destroy();
   }, [role]);
 
-  // Player Messaging
+  // --- TIMER LOGIC ---
+  useEffect(() => {
+    let interval: any;
+    if (gameState === 'QUESTION' && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            handleReveal(); // Auto reveal when time hits 0
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [gameState, timeLeft]);
+
+  // --- MESSAGING ---
   const joinRoom = (targetId: string) => {
-    const name = prompt("Enter your name for the Edwards Family Quiz:") || "Guest";
+    const name = prompt("Enter your name:") || "Guest";
     setMyName(name);
     const conn = peerRef.current.connect(targetId);
     conn.on('open', () => {
@@ -85,36 +111,14 @@ const App: React.FC = () => {
     connectionsRef.current.set('HOST', conn);
   };
 
-  const sendToHost = (msg: PeerMessage) => {
-    const conn = connectionsRef.current.get('HOST');
-    if (conn) conn.send(msg);
-  };
-
-  const broadcastToPlayers = (msg: PeerMessage) => {
-    connectionsRef.current.forEach(conn => conn.send(msg));
-  };
-
-  // Message Handlers
   const handleHostMessage = (conn: any, data: PeerMessage) => {
     if (data.type === 'JOIN') {
       setPlayers(prev => {
         if (prev.find(p => p.peerId === conn.peer)) return prev;
-        const newPlayer: Player = {
-          id: conn.peer,
-          peerId: conn.peer,
-          name: data.name,
-          score: 0,
-          streak: 0,
-          hasAnswered: false,
-          selectedIdx: null,
-          lastAnswerCorrect: false
-        };
-        return [...prev, newPlayer];
+        return [...prev, { id: conn.peer, peerId: conn.peer, name: data.name, score: 0, streak: 0, hasAnswered: false, selectedIdx: null, lastAnswerCorrect: false }];
       });
     } else if (data.type === 'SUBMIT_ANSWER') {
-      setPlayers(prev => prev.map(p => 
-        p.peerId === conn.peer ? { ...p, hasAnswered: true, selectedIdx: data.index } : p
-      ));
+      setPlayers(prev => prev.map(p => p.peerId === conn.peer ? { ...p, hasAnswered: true, selectedIdx: data.index } : p));
     }
   };
 
@@ -124,246 +128,293 @@ const App: React.FC = () => {
       if (data.question) {
         setQuestions([data.question]);
         setCurrentQuestionIndex(0);
+        setTimeLeft(ROUND_TIME); // Reset timer on player side too for visuals
       }
     } else if (data.type === 'SCORE_UPDATE') {
       setMyScore(data.score);
     }
   };
 
-  // Game Logic (Host Only)
+  const broadcast = (msg: PeerMessage) => connectionsRef.current.forEach(conn => conn.send(msg));
+
+  // --- GAMEPLAY ---
   const startNextRound = useCallback(async () => {
     if (currentRound >= CATEGORIES.length) {
       setGameState('FINAL_RESULTS');
-      broadcastToPlayers({ type: 'GAME_STATE', state: 'FINAL_RESULTS' });
+      broadcast({ type: 'GAME_STATE', state: 'FINAL_RESULTS' });
       return;
     }
-
     setLoading(true);
     setGameState('ROUND_INTRO');
-    broadcastToPlayers({ type: 'GAME_STATE', state: 'ROUND_INTRO' });
+    broadcast({ type: 'GAME_STATE', state: 'ROUND_INTRO' });
 
     try {
-      const category = CATEGORIES[currentRound];
-      const newQuestions = await getRandomQuestions(category, 6);
+      const newQuestions = await getRandomQuestions(CATEGORIES[currentRound], 6);
       setQuestions(newQuestions);
       setCurrentQuestionIndex(0);
       
       setTimeout(() => {
         setLoading(false);
         setGameState('QUESTION');
-        broadcastToPlayers({ 
-          type: 'GAME_STATE', 
-          state: 'QUESTION', 
-          question: newQuestions[0] 
-        });
+        setTimeLeft(ROUND_TIME); // Reset timer
+        broadcast({ type: 'GAME_STATE', state: 'QUESTION', question: newQuestions[0] });
       }, 3000);
-    } catch (error) {
-      setLoading(false);
-    }
+    } catch (error) { setLoading(false); }
   }, [currentRound]);
+
+  const handleReveal = () => {
+    if (gameState === 'REVEAL') return; // Prevent double trigger
+    const currentQ = questions[currentQuestionIndex];
+    if (!currentQ) return;
+    
+    const correctIdx = currentQ.correctIndex;
+    const updatedPlayers = players.map(p => ({
+      ...p,
+      lastAnswerCorrect: p.selectedIdx === correctIdx
+    }));
+    setPlayers(updatedPlayers);
+    setGameState('REVEAL');
+    broadcast({ type: 'GAME_STATE', state: 'REVEAL' }); // Notify players round ended
+  };
 
   const commitPoints = () => {
     const q = questions[currentQuestionIndex];
     const points = q.isBonus ? 20 : 10;
-
     const updatedPlayers = players.map(p => {
       if (p.lastAnswerCorrect) {
         const newScore = p.score + points;
         const conn = connectionsRef.current.get(p.peerId);
         if (conn) conn.send({ type: 'SCORE_UPDATE', score: newScore });
-        return { ...p, score: newScore, streak: p.streak + 1, hasAnswered: false, lastAnswerCorrect: false };
+        return { ...p, score: newScore, streak: p.streak + 1, hasAnswered: false, selectedIdx: null, lastAnswerCorrect: false };
       }
-      return { ...p, streak: 0, hasAnswered: false, lastAnswerCorrect: false };
+      return { ...p, streak: 0, hasAnswered: false, selectedIdx: null, lastAnswerCorrect: false };
     });
-
     setPlayers(updatedPlayers);
 
     if (currentQuestionIndex < questions.length - 1) {
       const nextQ = questions[currentQuestionIndex + 1];
       setCurrentQuestionIndex(prev => prev + 1);
       setGameState('QUESTION');
-      broadcastToPlayers({ type: 'GAME_STATE', state: 'QUESTION', question: nextQ });
+      setTimeLeft(ROUND_TIME);
+      broadcast({ type: 'GAME_STATE', state: 'QUESTION', question: nextQ });
     } else {
       setGameState('LEADERBOARD');
-      broadcastToPlayers({ type: 'GAME_STATE', state: 'LEADERBOARD' });
+      broadcast({ type: 'GAME_STATE', state: 'LEADERBOARD' });
       setCurrentRound(prev => prev + 1);
     }
   };
 
-  const generateInviteLink = () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('room', hostPeerId);
-    return url.toString();
-  };
-
-  // Render
+  // --- RENDER PLAYER SCREEN ---
   if (role === 'PLAYER') {
     return (
-      <PlayerController 
-        gameState={gameState}
-        currentQuestion={questions[0]}
-        currentScore={myScore}
-        onSendAnswer={(index) => sendToHost({ type: 'SUBMIT_ANSWER', index })}
-        connected={connected}
-        playerName={myName}
-      />
+      <div className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center justify-center font-sans">
+        {!connected ? (
+          <div className="text-2xl animate-pulse">Connecting to Host...</div>
+        ) : gameState === 'LOBBY' ? (
+          <div className="text-center space-y-6">
+            <h1 className="text-4xl font-black text-yellow-400">Welcome, {myName}!</h1>
+            <p className="text-white/50 text-xl">Waiting for host to start...</p>
+            <div className="p-8 bg-white/10 rounded-full animate-bounce">
+              <Users size={48} />
+            </div>
+          </div>
+        ) : gameState === 'QUESTION' ? (
+          <div className="w-full max-w-md space-y-6">
+            <div className="flex justify-between items-center text-sm font-bold uppercase tracking-widest text-white/50">
+              <span>Q{currentQuestionIndex + 1}</span>
+              <span className={timeLeft < 10 ? "text-red-500" : "text-white"}>{timeLeft}s</span>
+            </div>
+            <h2 className="text-2xl font-bold text-center leading-tight">{questions[0]?.text}</h2>
+            <div className="grid gap-3">
+              {questions[0]?.options.map((opt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    const conn = connectionsRef.current.get('HOST');
+                    if (conn) conn.send({ type: 'SUBMIT_ANSWER', index: idx });
+                    // Visual feedback is minimal here, simpler to rely on Host screen
+                  }}
+                  className="p-6 bg-white/10 border-2 border-white/10 rounded-xl text-lg font-bold active:bg-yellow-400 active:text-black transition-all hover:bg-white/20 text-left"
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center space-y-4">
+             <div className="text-6xl font-black text-yellow-400">{myScore}</div>
+             <div className="uppercase tracking-widest text-sm font-bold">Current Score</div>
+             <p className="text-white/50 animate-pulse">Look at the big screen!</p>
+          </div>
+        )}
+      </div>
     );
   }
 
+  // --- RENDER HOST SCREEN ---
   return (
-    <div className="min-h-screen relative overflow-x-hidden bg-slate-950 text-white pb-20 font-sans">
-      <Fireworks />
+    <div className="min-h-screen bg-slate-950 text-white font-sans overflow-hidden relative selection:bg-yellow-400 selection:text-black">
+      {/* Background Decor */}
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 -left-1/4 w-[80%] h-[80%] bg-blue-600/5 blur-[120px] rounded-full" />
-        <div className="absolute bottom-0 -right-1/4 w-[80%] h-[80%] bg-purple-600/5 blur-[120px] rounded-full" />
+         <div className="absolute top-0 -left-20 w-96 h-96 bg-blue-600/20 blur-[100px] rounded-full" />
+         <div className="absolute bottom-0 -right-20 w-96 h-96 bg-purple-600/20 blur-[100px] rounded-full" />
       </div>
 
-      <header className="p-6 relative z-10 flex justify-between items-center max-w-7xl mx-auto">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-yellow-400 rounded-lg shadow-lg">
-            <Sparkles className="text-slate-900" size={24} />
-          </div>
-          <span className="font-display font-black text-2xl tracking-tight uppercase">Edwards Family Quiz</span>
-        </div>
-        {gameState !== 'LOBBY' && (
-          <div className="flex gap-4">
-            {players.map(p => (
-              <div key={p.id} className="flex flex-col items-end">
-                <span className="text-[10px] text-white/40 font-bold uppercase">{p.name}</span>
-                <span className="text-sm font-black text-yellow-400">{p.score}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </header>
-
-      <main className="container mx-auto mt-4 relative z-10 px-4">
-        {gameState === 'LOBBY' && (
-          <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-12 p-8">
-            <div className="glass p-10 rounded-[3rem] flex flex-col items-center justify-center space-y-8 text-center border-2 border-yellow-400/20">
-              <h2 className="text-sm font-black uppercase tracking-[0.4em] text-yellow-400">Join the Quiz</h2>
-              <div id="qrcode-container" className="bg-white p-4 rounded-3xl shadow-2xl">
-                {hostPeerId && (
-                  <canvas id="invite-qr" ref={(node) => {
-                    const QRCodeLib = (window as any).QRCode;
-                    if (node && QRCodeLib) {
-                      QRCodeLib.toCanvas(node, generateInviteLink(), { width: 280, margin: 2 });
-                    }
-                  }} />
-                )}
-              </div>
-              <div className="space-y-2">
-                 <p className="text-white/40 font-bold text-xs uppercase tracking-widest">Share this Link</p>
-                 <div className="bg-white/5 px-6 py-3 rounded-full border border-white/10 flex items-center gap-4 text-sm font-mono text-yellow-100">
-                    {generateInviteLink().substring(0, 30)}...
-                    <Share2 size={16} className="cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(generateInviteLink())} />
-                 </div>
-              </div>
+      <div className="max-w-7xl mx-auto p-6 relative z-10">
+        <header className="flex justify-between items-center mb-12">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-yellow-400 rounded-xl shadow-lg shadow-yellow-400/20">
+              <Sparkles className="text-slate-950" size={32} />
             </div>
+            <h1 className="text-3xl font-black uppercase tracking-tight">Edwards Family Quiz</h1>
+          </div>
+          {gameState !== 'LOBBY' && (
+             <div className="flex gap-2">
+                <span className="px-4 py-2 bg-white/10 rounded-lg font-mono font-bold text-yellow-400">{timeLeft}s</span>
+                <button onClick={handleReveal} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold uppercase">Skip Timer</button>
+             </div>
+          )}
+        </header>
 
-            <div className="space-y-8">
-              <div className="flex justify-between items-end">
-                 <h2 className="text-4xl font-black font-display">Players Joined</h2>
-                 <span className="text-4xl font-black text-yellow-400">{players.length}/4</span>
+        <main className="min-h-[600px] flex flex-col justify-center">
+          {gameState === 'LOBBY' && (
+            <div className="grid md:grid-cols-2 gap-16 items-center">
+              <div className="glass p-12 rounded-[3rem] text-center space-y-8 border border-white/10">
+                <h2 className="text-xl font-black uppercase tracking-[0.5em] text-yellow-400">Join the Game</h2>
+                <div className="bg-white p-4 rounded-3xl inline-block shadow-2xl">
+                  {hostPeerId && (
+                     <canvas ref={(node) => {
+                       if(node && (window as any).QRCode) (window as any).QRCode.toCanvas(node, window.location.href + "?room=" + hostPeerId, { width: 300, margin: 2 });
+                     }} />
+                  )}
+                </div>
+                <div className="flex items-center justify-center gap-2 text-white/40 font-mono text-sm bg-black/20 p-4 rounded-xl">
+                  <Share2 size={16} /> Scan to join
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                 {[0,1,2,3].map(i => (
-                   <div key={i} className={`h-32 rounded-3xl border-2 flex flex-col items-center justify-center gap-2 transition-all ${players[i] ? 'bg-green-500/10 border-green-500 shadow-glow' : 'bg-white/5 border-white/10 opacity-30'}`}>
-                      {players[i] ? (
-                        <>
-                          <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center font-bold text-xl">
-                            {players[i].name[0].toUpperCase()}
+              <div className="space-y-8">
+                 <h2 className="text-5xl font-black">Who's Playing? <span className="text-yellow-400">({players.length})</span></h2>
+                 <div className="grid grid-cols-2 gap-4">
+                    {players.map(p => (
+                       <div key={p.id} className="p-6 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-4 animate-in fade-in slide-in-from-right">
+                          <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-slate-900 font-bold text-xl">
+                            {p.name[0].toUpperCase()}
                           </div>
-                          <span className="font-bold">{players[i].name}</span>
-                        </>
-                      ) : (
-                        <span className="text-xs font-black text-white/20 uppercase tracking-widest">Empty Slot</span>
-                      )}
-                   </div>
-                 ))}
+                          <span className="font-bold text-xl truncate">{p.name}</span>
+                       </div>
+                    ))}
+                    {players.length === 0 && <p className="text-white/30 italic">Waiting for players...</p>}
+                 </div>
+                 <button 
+                   onClick={startNextRound} 
+                   disabled={players.length === 0}
+                   className="w-full py-8 bg-yellow-400 text-slate-950 rounded-2xl font-black text-4xl shadow-xl shadow-yellow-400/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none"
+                 >
+                   START GAME
+                 </button>
               </div>
-              <button 
-                disabled={players.length === 0}
-                onClick={startNextRound}
-                className={`w-full py-6 rounded-[2rem] font-black text-3xl transition-all ${players.length > 0 ? 'bg-yellow-400 text-slate-900 shadow-2xl hover:scale-105 active:scale-95' : 'bg-white/5 text-white/20'}`}
-              >
-                START GAME
-              </button>
             </div>
-          </div>
-        )}
+          )}
 
-        {gameState === 'ROUND_INTRO' && (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-in fade-in slide-in-from-top-12 duration-1000">
-            <h1 className="text-yellow-400 font-bold uppercase tracking-[0.4em] text-sm">Round {currentRound + 1}</h1>
-            <h2 className="text-8xl md:text-[10rem] font-black font-display text-transparent bg-clip-text bg-gradient-to-b from-white to-white/10">
-              {CATEGORIES[currentRound]}
-            </h2>
-          </div>
-        )}
+          {gameState === 'ROUND_INTRO' && (
+            <div className="text-center space-y-6 animate-in zoom-in duration-500">
+               <h3 className="text-2xl font-bold uppercase tracking-[0.5em] text-yellow-400">Next Round</h3>
+               <h2 className="text-9xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-white/20">{CATEGORIES[currentRound]}</h2>
+            </div>
+          )}
 
-        {gameState === 'QUESTION' && questions[currentQuestionIndex] && (
-          <QuestionCard 
-            question={questions[currentQuestionIndex]}
-            questionNumber={currentQuestionIndex + 1}
-            totalQuestions={questions.length}
-            players={players}
-            onToggleReady={() => {}} // Not used in real-time mode
-            onReveal={() => setGameState('REVEAL')}
-          />
-        )}
-
-        {gameState === 'REVEAL' && (
-          <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in zoom-in duration-500">
-            <div className="glass p-12 rounded-[3rem] text-center border-2 border-yellow-400/30 shadow-2xl">
-              <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-6" />
-              <h2 className="text-sm uppercase tracking-[0.3em] text-yellow-400 font-black mb-2">The Correct Answer</h2>
-              <h3 className="text-5xl font-black mb-8 font-display text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-yellow-500">
-                {questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctIndex]}
-              </h3>
-              
-              <div className="bg-white/5 p-8 rounded-2xl mb-8 flex gap-4 items-start text-left border border-white/5">
-                <Info className="text-yellow-400 shrink-0 mt-1" />
-                <p className="text-xl italic text-white/80 leading-relaxed">"{questions[currentQuestionIndex].explanation}"</p>
+          {gameState === 'QUESTION' && questions[currentQuestionIndex] && (
+            <div className="max-w-5xl mx-auto w-full">
+              <div className="mb-8 flex justify-between items-end">
+                <span className="text-xl font-bold text-white/50">Question {currentQuestionIndex + 1} / {questions.length}</span>
+                <div className="flex items-center gap-2 text-3xl font-mono font-black text-yellow-400">
+                  <Timer /> {timeLeft}s
+                </div>
               </div>
+              
+              <h2 className="text-5xl md:text-6xl font-bold mb-12 leading-tight drop-shadow-lg">
+                {questions[currentQuestionIndex].text}
+              </h2>
 
-              <h3 className="text-sm uppercase tracking-[0.3em] text-white/40 font-black mb-6 italic">Host: Confirm who got it right</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                {players.map(p => (
-                  <button 
-                    key={p.id} 
-                    onClick={() => setPlayers(prev => prev.map(p2 => p2.id === p.id ? {...p2, lastAnswerCorrect: !p2.lastAnswerCorrect} : p2))}
-                    className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${p.lastAnswerCorrect ? 'bg-green-500/20 border-green-500' : 'bg-white/5 border-white/10 opacity-50'}`}
-                  >
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${p.lastAnswerCorrect ? 'bg-green-500' : 'bg-white/10'}`}>
-                      {p.lastAnswerCorrect ? <CheckCircle size={24} /> : <XCircle size={24} />}
-                    </div>
-                    <span className="font-bold">{p.name}</span>
-                  </button>
+              <div className="grid md:grid-cols-2 gap-6">
+                {questions[currentQuestionIndex].options.map((opt, i) => (
+                   <div key={i} className={`p-8 rounded-3xl border-2 border-white/10 bg-white/5 text-2xl font-bold flex items-center gap-4 ${i === questions[currentQuestionIndex].correctIndex && gameState === 'REVEAL' ? 'bg-green-500/20 border-green-500' : ''}`}>
+                      <div className="w-12 h-12 rounded-full border-2 border-white/20 flex items-center justify-center text-sm font-black text-white/50">
+                        {['A','B','C','D'][i]}
+                      </div>
+                      {opt}
+                   </div>
                 ))}
               </div>
+
+              {/* Player Status Bar */}
+              <div className="mt-12 flex gap-4 overflow-x-auto pb-4">
+                 {players.map(p => (
+                    <div key={p.id} className={`flex-shrink-0 flex flex-col items-center gap-2 transition-all ${p.hasAnswered ? 'opacity-100 scale-110' : 'opacity-50'}`}>
+                       <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-slate-900 shadow-lg ${p.hasAnswered ? 'bg-yellow-400 shadow-yellow-400/50' : 'bg-white/20'}`}>
+                          {p.name[0].toUpperCase()}
+                       </div>
+                       <span className="text-xs font-bold uppercase">{p.name}</span>
+                    </div>
+                 ))}
+              </div>
             </div>
-            <button onClick={commitPoints} className="w-full py-6 bg-white text-slate-900 rounded-[2rem] font-black text-2xl hover:bg-yellow-400 transition-all flex items-center justify-center gap-3">
-              NEXT CHALLENGE <ChevronRight size={32} />
-            </button>
-          </div>
-        )}
+          )}
 
-        {gameState === 'LEADERBOARD' && (
-          <Leaderboard players={players} onNext={startNextRound} title={`Round Complete!`} />
-        )}
+          {gameState === 'REVEAL' && (
+             <div className="text-center max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-8">
+                <div>
+                   <h3 className="text-yellow-400 font-bold uppercase tracking-widest mb-4">Correct Answer</h3>
+                   <div className="bg-green-500 text-white p-8 rounded-3xl text-5xl font-black shadow-2xl shadow-green-500/20">
+                      {questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctIndex]}
+                   </div>
+                </div>
 
-        {gameState === 'FINAL_RESULTS' && (
-          <Leaderboard players={players} onNext={() => window.location.reload()} title="NYE 2025 CHAMPIONS" isFinal={true} />
-        )}
-      </main>
+                <div className="bg-white/10 p-8 rounded-2xl flex gap-4 items-start text-left">
+                   <Info className="shrink-0 text-yellow-400" />
+                   <p className="text-xl leading-relaxed">{questions[currentQuestionIndex].explanation}</p>
+                </div>
 
-      {loading && (
-        <div className="fixed inset-0 z-50 bg-slate-950/95 flex flex-col items-center justify-center space-y-6">
-          <div className="w-20 h-20 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-2xl font-black text-yellow-400 tracking-widest uppercase">Shuffling Question Pool...</p>
-        </div>
-      )}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                   {players.map(p => (
+                      <div key={p.id} className={`p-4 rounded-xl border flex items-center justify-between ${p.lastAnswerCorrect ? 'bg-green-500/20 border-green-500' : 'bg-red-500/10 border-red-500/20'}`}>
+                         <span className="font-bold">{p.name}</span>
+                         {p.lastAnswerCorrect ? <CheckCircle className="text-green-500" /> : <XCircle className="text-red-500/50" />}
+                      </div>
+                   ))}
+                </div>
+
+                <button onClick={commitPoints} className="px-12 py-6 bg-white text-slate-900 rounded-2xl font-black text-2xl hover:bg-yellow-400 transition-colors flex items-center justify-center gap-3 mx-auto">
+                   NEXT <ChevronRight />
+                </button>
+             </div>
+          )}
+
+          {(gameState === 'LEADERBOARD' || gameState === 'FINAL_RESULTS') && (
+             <div className="max-w-2xl mx-auto w-full">
+                <div className="text-center mb-12">
+                   <Trophy className="w-24 h-24 text-yellow-400 mx-auto mb-6 animate-bounce" />
+                   <h2 className="text-5xl font-black uppercase font-display">{gameState === 'FINAL_RESULTS' ? 'WINNERS' : 'LEADERBOARD'}</h2>
+                </div>
+                <div className="space-y-4">
+                   {[...players].sort((a,b) => b.score - a.score).map((p, i) => (
+                      <div key={p.id} className="bg-white/5 p-6 rounded-2xl flex items-center justify-between border border-white/10 hover:bg-white/10 transition-colors">
+                         <div className="flex items-center gap-6">
+                            <span className={`text-4xl font-black w-12 ${i===0 ? 'text-yellow-400' : i===1 ? 'text-gray-300' : i===2 ? 'text-orange-400' : 'text-white/20'}`}>#{i+1}</span>
+                            <span className="text-2xl font-bold">{p.name}</span>
+                         </div>
+                         <span className="text-4xl font-black text-yellow-400">{p.score}</span>
+                      </div>
+                   ))}
+                </div>
+                <button onClick={gameState === 'FINAL_RESULTS' ? () => window.location.reload() : startNextRound} className="mt-12 w-full py-6 bg-white/10 hover:bg-white text-white hover:text-slate-900 rounded-2xl font-bold text-xl transition-all">
+                   {gameState === 'FINAL_RESULTS' ? 'PLAY AGAIN' : 'NEXT ROUND'}
+                </button>
+             </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 };
