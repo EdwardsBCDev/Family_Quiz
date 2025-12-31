@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Player, Category, GameState, Question, PeerMessage } from './types';
-import { questionsPool } from './questionsData'; // Correct import
+import { questionsPool } from './questionsData'; 
 import { Sparkles, Trophy, ChevronRight, Info, CheckCircle, XCircle, Share2, Timer, Users } from 'lucide-react';
 
 // --- HELPER TO SHUFFLE QUESTIONS ---
-const shuffle = <T>(array: T[]): T[] => {
+// Changed to standard function to fix the build error
+function shuffle<T>(array: T[]): T[] {
   const newArr = [...array];
   for (let i = newArr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
   }
   return newArr;
-};
+}
 
 // --- SERVICE LOGIC ---
 let usedQuestionIds: Set<string> = new Set();
@@ -232,7 +233,6 @@ const App: React.FC = () => {
                   onClick={() => {
                     const conn = connectionsRef.current.get('HOST');
                     if (conn) conn.send({ type: 'SUBMIT_ANSWER', index: idx });
-                    // Visual feedback is minimal here, simpler to rely on Host screen
                   }}
                   className="p-6 bg-white/10 border-2 border-white/10 rounded-xl text-lg font-bold active:bg-yellow-400 active:text-black transition-all hover:bg-white/20 text-left"
                 >
