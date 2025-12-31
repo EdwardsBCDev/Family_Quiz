@@ -1,0 +1,7 @@
+{
+  "name": "Edwards Family Quiz - NYE Edition",
+  "description": "A festive, high-energy family quiz app designed for New Year's Eve. Features Disney trivia, music history, and general knowledge with AI-generated questions and real-time leaderboards.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
